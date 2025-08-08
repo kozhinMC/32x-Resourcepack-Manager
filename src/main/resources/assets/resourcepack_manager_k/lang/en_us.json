@@ -1,0 +1,10 @@
+{
+  "key.category.texturecontroller": "32X Resource pack Controller",
+  "key.texturecontroller.get_texture_block": "Report Broken Block Texture",
+  "key.texturecontroller.get_texture_item": "Report Broken Item Texture",
+  "key.texturecontroller.open_config": "Open Config Screen",
+  "key.texturecontroller.black_list_block_texture": "Black List Block Texture",
+  "key.texturecontroller.un-black_list_block_texture": "Un Black List Block Texture",
+  "key.texturecontroller.black_list_item_texture": "Black List Item Texture",
+  "key.texturecontroller.un-black_list_item_texture": "Un Black List Item Texture"
+}

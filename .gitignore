@@ -1,0 +1,16 @@
+# 1. Ignore everything in the root directory
+/*
+
+# 2. But, include the 'src' directory
+!/src/
+
+!/gradle/wrapper/
+
+!/.gitignore
+!/gradlew.bat
+!/gradlew
+!/build.gradle
+!/gradle.properties
+!/settings.gradle
+
+!/README.txt
