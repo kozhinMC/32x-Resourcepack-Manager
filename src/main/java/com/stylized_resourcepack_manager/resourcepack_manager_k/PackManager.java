@@ -34,7 +34,7 @@ public class PackManager {
     public static final File light_assets_cache_file = new File(Minecraft.getInstance().gameDirectory, "config/"+ResourceManagerK.MOD_CONFIG_ID+"/cache/" + ResourceManagerK.MOD_ID + "_light_assets_cache.json");
 
     public static void scanAndInitialize() {
-        LOGGER.info("Attempting to directly locate and scan target resource pack: '{}'", TARGET_PACK_FILENAME);
+        LOGGER.info("trying to load main resource pack manually: '{}'", TARGET_PACK_FILENAME);
 
         // 2. Check if the target zip file actually exists
         if (!targetPackFile.exists() || !targetPackFile.isFile()) {
@@ -53,10 +53,11 @@ public class PackManager {
             return;
         }
 
-        LOGGER.info("Found target pack file '{}'. Opening and scanning contents or loading cache...", targetPackFile.getAbsolutePath());
+//        LOGGER.info("Found target pack file '{}'. Opening and scanning contents or loading cache...", targetPackFile.getAbsolutePath());
         PackManagerCache cache_used = load_cache(used_assets_cache_file);
         PackManagerCache cache_light = load_cache(light_assets_cache_file);
-        if(cache_used != null&&cache_light!=null){
+        if(cache_used != null&&cache_light!=null&&!cache_light.scannedNameSpaces.isEmpty()&&!cache_used.ActiveInUseDataCache.isEmpty()){
+            LOGGER.info("Found resource pack file: loading cached assets...");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
             SCANNED_NAMESPACES = new HashSet<>();
@@ -66,6 +67,7 @@ public class PackManager {
             VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,ss);
             return;
         }
+
         generate_cache();
     }
 
@@ -96,6 +98,11 @@ public class PackManager {
 //                }
 //            }
 
+            if (SCANNED_NAMESPACES.isEmpty()||all_resources.isEmpty()){
+                LOGGER.error("An unexpected error occurred while scanning the resource pack file: Couldn't Find Any Assets.");
+                VIRTUAL_PACK = new DynamicResourcePack( targetPackFile,Collections.emptySet());
+                return;
+            }
             LOGGER.info(all_resources.size()+" Cached and Saved.");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
@@ -106,9 +113,10 @@ public class PackManager {
             save_cache(light_assets_cache_file,null,null,SCANNED_NAMESPACES,update_flags);
             save_cache(used_assets_cache_file,null,new HashSet<>(),null,null);
             VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,new HashSet<>());
+            LOGGER.info("Found resource pack file': resource pack is active now and up to date. caching assets...");
         } catch (Exception e) {
             LOGGER.error("An unexpected error occurred while scanning the resource pack file.", e);
-            VIRTUAL_PACK = new DynamicResourcePack( targetPackFile,Collections.emptySet());
+            VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,Collections.emptySet());
         }
     }
 

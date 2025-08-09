@@ -340,6 +340,7 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void onResourceReload(net.minecraftforge.client.event.RegisterClientReloadListenersEvent event) {
+        if (PackManager.VIRTUAL_PACK==null)return;
         // Any resource reload means we need to check our pack's position again.
         int pack_pos_config = ResourceManagerConfigK.PACK_POSITION.get();
         if (pack_pos_config < 0) return;
@@ -364,7 +365,7 @@ public class ClientEvents {
         // This event is a reliable signal that resource loading is finished.
         // It's now safe to clear the cached Sets.
         if (!ResourceManagerConfigK.ENABLE_RESOURCEPACK.get())return;
-        ResourceManagerK.SendToLoggerDebug("Model baking complete. Clearing dynamic resource pack caches.",ChatFormatting.WHITE);
+        ResourceManagerK.SendToLoggerDebug("Model Baking Complete Event: Clearing dynamic resource pack caches.",ChatFormatting.WHITE);
         PackManager.clearCachedPathData();
     }
 }

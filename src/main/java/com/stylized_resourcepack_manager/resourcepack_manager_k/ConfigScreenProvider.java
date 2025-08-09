@@ -25,6 +25,7 @@ public class ConfigScreenProvider {
     private static boolean isEnableAll = false;
     private static boolean isDisableAll = false;
     private static boolean LoopBreak = false;
+    private static PackManagerCache light_cache;
 
     public static Screen createConfigScreen(Screen parent) {
         ConfigBuilder builder = ConfigBuilder.create()
@@ -211,11 +212,12 @@ public class ConfigScreenProvider {
         addKeyDesc(entryBuilder,keysCategory,"Un Black List Block","This key un-black list the textures of the targeted block.", KeyBinds.UN_BLACK_LIST_BLOCK_TEXTURE_KEY);
         addKeyDesc(entryBuilder,keysCategory,"Un Black List Item","This key un-black list the item textures in the main hand.", KeyBinds.UN_BLACK_LIST_ITEM_TEXTURE_KEY);
 
-
+        light_cache = PackManager.load_cache(PackManager.light_assets_cache_file);
         builder.setSavingRunnable(() -> {
             ResourceManagerConfigK.SPEC.save();
             BlackListsConfigs.saveConfig();
             ModOverrideConfigManager.saveConfig();
+            if (light_cache!=null)PackManager.save_cache(PackManager.light_assets_cache_file,null,null,light_cache.scannedNameSpaces,light_cache.UpdateFlags);
             if (ResourceManagerConfigK.ENABLE_LOAD_RESOURCE_UPON_SAVE.get())Minecraft.getInstance().reloadResourcePacks();
             isEnableAll = false;
             isDisableAll = false;
@@ -285,12 +287,11 @@ public class ConfigScreenProvider {
                         ModOverrideConfigManager.modSettings.forEach((key,valuee)->valuee.enabled = false);
                         update_all(false);
                     }else{
+                        if (settings.enabled==value)return;
                         settings.enabled = value;
-                        PackManagerCache cache = PackManager.load_cache(PackManager.light_assets_cache_file);
-                        if (cache!=null) {
-                            cache.UpdateFlags.remove(namespace);
-                            cache.UpdateFlags.put(namespace, true);
-                            PackManager.save_cache(PackManager.light_assets_cache_file,null,null,cache.scannedNameSpaces,cache.UpdateFlags);
+                        if (light_cache!=null) {
+                            light_cache.UpdateFlags.remove(namespace);
+                            light_cache.UpdateFlags.put(namespace, true);
                         }else{
                             ResourceManagerK.SendToLoggerDebug("Updating "+namespace+" Failed",ChatFormatting.RED);
                         }
