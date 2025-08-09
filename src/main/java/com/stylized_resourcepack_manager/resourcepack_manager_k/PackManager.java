@@ -65,7 +65,7 @@ public class PackManager {
 
         PackManagerCache cache_used = load_cache(used_assets_cache_file);
         PackManagerCache cache_light = load_cache(light_assets_cache_file);
-        if(cache_used != null&&cache_light!=null&&!cache_light.scannedNameSpaces.isEmpty()&&!cache_used.ActiveInUseDataCache.isEmpty()){
+        if(cache_used != null&&cache_light!=null&&!cache_light.scannedNameSpaces.isEmpty()){
             LOGGER.info("Found resource pack file: loading cached assets...");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
@@ -198,7 +198,7 @@ public class PackManager {
     public static PackManagerCache load_cache(File file){
         if (file.exists()) {
             try {
-                LOGGER.info("Cache file found. Validating...");
+                LOGGER.info("Cache file {} found. Validating...",file.getName());
                 PackManagerCache cachedData = ResourceManagerK.GSON.fromJson(new FileReader(file), PackManagerCache.class);
                 String currentHash = calculateFileHash();
 
@@ -227,6 +227,7 @@ public class PackManager {
             all_assets_cache_file.delete();
             used_assets_cache_file.delete();
             light_assets_cache_file.delete();
+            ResourceManagerK.SendToLoggerDebug("Cached assets is empty, deleting cache files, try to attempt next resource loading.",ChatFormatting.WHITE);
             return current;
         }
         for (String scannedNamespace : SCANNED_NAMESPACES) {

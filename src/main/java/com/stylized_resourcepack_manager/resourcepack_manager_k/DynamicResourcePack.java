@@ -6,15 +6,11 @@ import com.google.gson.JsonParser;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.BlackListsConfigs;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.ModOverrideConfigManager;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.ResourceManagerConfigK;
-import net.minecraft.ChatFormatting;
 import net.minecraft.ResourceLocationException;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
-import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.resources.IoSupplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,12 +27,12 @@ import java.util.zip.ZipFile;
 public class DynamicResourcePack implements PackResources{
 
     private final ZipFile zipFile; // The connection to the ZIP file
-    private static Set<String> allKnownPaths; // Your filter data
+    private static Set<String> used_assets_set; // Your filter data
 
     public DynamicResourcePack(File targetPackFile, Set<String> allKnownPaths1) throws IOException {
         // Open the zip file once and keep it open until close() is called
         this.zipFile = new ZipFile(targetPackFile);
-        allKnownPaths = allKnownPaths1;
+        used_assets_set = allKnownPaths1;
     }
 
     // --- DELEGATED METHODS NOW REIMPLEMENTED USING ZipFile ---
@@ -133,15 +129,15 @@ public class DynamicResourcePack implements PackResources{
     }
 
     public static void clearCachedPathData(){
-        if (allKnownPaths!=null) {
-            allKnownPaths.clear();
-            allKnownPaths = null;
+        if (used_assets_set !=null) {
+            used_assets_set.clear();
+            used_assets_set = null;
         }
     }
 
     private boolean shouldProvideResource(String resourcePath) {
         //if the file isn't in our scanned list, we definitely don't have it. False = no True = Yes
-        if (allKnownPaths==null||!allKnownPaths.contains(resourcePath)) {
+        if (used_assets_set ==null||!used_assets_set.contains(resourcePath)) {
             return false;
         }
 
