@@ -1,36 +1,135 @@
 package com.stylized_resourcepack_manager.resourcepack_manager_k;
 
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.BlackListsConfigs;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.ModOverrideConfigManager;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.ResourceManagerConfigK;
+import net.minecraft.ChatFormatting;
+import net.minecraft.ResourceLocationException;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
-
-import net.minecraft.server.packs.FilePackResources;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
+import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.resources.IoSupplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class DynamicResourcePack implements PackResources{
 
-    // This is a direct handle to the real ZIP file. It will do the actual reading.
-    private final PackResources underlyingPack;
-    private static Set<String> allKnownPaths;
+    private final ZipFile zipFile; // The connection to the ZIP file
+    private static Set<String> allKnownPaths; // Your filter data
 
-    public DynamicResourcePack(File targetPackFile, Set<String> allKnownPaths1 ) {
-        // We initialize a standard FilePackResources which knows how to read from a ZIP.
-        // This is our connection to the actual assets on disk.
-        this.underlyingPack = new FilePackResources(targetPackFile.getName(), targetPackFile, true);
-        allKnownPaths = allKnownPaths1; // Assuming you add a getter for this
+    public DynamicResourcePack(File targetPackFile, Set<String> allKnownPaths1) throws IOException {
+        // Open the zip file once and keep it open until close() is called
+        this.zipFile = new ZipFile(targetPackFile);
+        allKnownPaths = allKnownPaths1;
+    }
+
+    // --- DELEGATED METHODS NOW REIMPLEMENTED USING ZipFile ---
+
+    @Override
+    public @NotNull Set<String> getNamespaces(@NotNull PackType type) {
+        // We find namespaces by looking for directories inside the "assets" folder
+        return zipFile.stream()
+                .filter(entry -> !entry.isDirectory() && entry.getName().startsWith("assets/"))
+                .map(entry -> {
+                    String path = entry.getName().substring("assets/".length());
+                    int separatorIndex = path.indexOf('/');
+                    return (separatorIndex != -1) ? path.substring(0, separatorIndex) : null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public IoSupplier<InputStream> getResource(@NotNull PackType type, @NotNull ResourceLocation location) {
+//        ResourceManagerK.SendToChatDebug(Minecraft.getInstance(),"getResource: "+ location, ChatFormatting.WHITE);
+        final ZipEntry entry = this.zipFile.getEntry("assets/" + location.getNamespace() + "/" + location.getPath());
+        if (entry != null) return () -> this.zipFile.getInputStream(entry);
+        return null;
+    }
+
+    @Override
+    public void listResources(@NotNull PackType type, @NotNull String namespace, @NotNull String path, @NotNull ResourceOutput consumer) {
+        // The search path within the zip file.
+        final String searchPrefix = "assets/" + namespace + "/" + path + "/";
+
+        this.zipFile.stream()
+                .filter(entry -> !entry.isDirectory() && entry.getName().startsWith(searchPrefix))
+                .forEach(entry -> {
+                    try {
+                        String resourcePathInPack = entry.getName().substring(("assets/" + namespace + "/").length());
+                        ResourceLocation location = new ResourceLocation(namespace, resourcePathInPack);
+                        if (this.shouldProvideResource("assets/" + location.getNamespace() + "/" + location.getPath())) {
+                            consumer.accept(location, () -> {
+                                try {
+//                                    ResourceManagerK.SendToLoggerDebug("listResources: InputStream: "+ "assets/" + location.getNamespace() + "/" + location.getPath(), ChatFormatting.WHITE);
+                                    return this.zipFile.getInputStream(entry);
+                                } catch (IOException e) {
+                                    // This inner catch handles errors if the zip is suddenly unreadable
+                                    throw new UncheckedIOException(e);
+                                }
+                            });
+                        }
+                    } catch (ResourceLocationException e) {
+                        // This entry has an invalid path. This is not an error for us, it just means
+                        // the pack has a junk file. We log it and skip it, preventing the crash.
+                        PackManager.LOGGER.warn("Skipping invalid entry in resource pack because its name is not a valid resource location: {}",  entry.getName());
+                    }
+                });
+    }
+
+    @Nullable
+    @Override
+    public <T> T getMetadataSection(@NotNull MetadataSectionSerializer<T> deserializer) {
+        // Find the pack.mcmeta file
+        final ZipEntry metadataEntry = this.zipFile.getEntry("pack.mcmeta");
+        if (metadataEntry == null) {
+            return null; // The pack has no metadata file at all.
+        }
+        try (InputStream stream = this.zipFile.getInputStream(metadataEntry)) {
+            // Read the entire file into a JsonObject
+            JsonObject json = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
+            String sectionName = deserializer.getMetadataSectionName();
+            if (json.has(sectionName)) {
+                // Only if it exists, get the section and pass it to the deserializer.
+                // We also ensure it's a JsonObject, as expected by the deserializer.
+                if (json.get(sectionName).isJsonObject()) {
+                    return deserializer.fromJson(json.getAsJsonObject(sectionName));
+                }
+            }
+            return null;
+
+        } catch (Exception e) {
+            // It's good practice to catch potential parsing errors too.
+            // You can log the error if you want.
+            // LOGGER.error("Failed to parse pack.mcmeta for " + packId(), e);
+            return null;
+        }
+    }
+
+    @Override
+    public void close() {
+        // This is now very important! It closes the zip file handle.
+        try {
+            this.zipFile.close();
+        } catch (IOException e) {
+            PackManager.LOGGER.error("Couldn't Close Dynamic Resource Pack");
+        }
     }
 
     public static void clearCachedPathData(){
@@ -38,41 +137,6 @@ public class DynamicResourcePack implements PackResources{
             allKnownPaths.clear();
             allKnownPaths = null;
         }
-    }
-
-    @Nullable
-    @Override
-    public IoSupplier<InputStream> getRootResource(String @NotNull ... p_252049_) {
-        return null;
-    }
-
-    /**
-     * PROVIDE THE ASSET: If hasResource() returned true, Minecraft calls this to get the data.
-     * We don't implement any logic here; we just delegate the request to the underlying
-     * pack that is connected to the real ZIP file.
-     */
-    @Override
-    public IoSupplier<InputStream> getResource(@NotNull PackType type, @NotNull ResourceLocation location) {
-//        if (mc.player!=null)mc.player.sendSystemMessage(Component.literal(location.getPath() + " getResource am getResource.").withStyle(ChatFormatting.YELLOW));
-        return this.underlyingPack.getResource(type, location);
-    }
-
-    /**
-     * THE GATEKEEPER: This is where you provide the assets to the game by either
-     * saying "yes, I have it" or "no, I don't."
-     */
-    @Override
-    public void listResources(@NotNull PackType type, @NotNull String namespace, @NotNull String path, @NotNull ResourceOutput consumer) {
-        // When Minecraft asks for a list of all resources, we must filter it.
-        // We ask the underlying pack for its complete list...
-//        if (mc.player!=null)mc.player.sendSystemMessage(Component.literal(path + " listed am listed.").withStyle(ChatFormatting.GREEN));
-//        PackManager.LOGGER.warn(path+" listed am listed logger");
-        this.underlyingPack.listResources(type, namespace, path, (loc, streamSupplier) -> {
-            // filter function
-            if (this.shouldProvideResource("assets/" + loc.getNamespace() + "/" + loc.getPath())) {
-                consumer.accept(loc, streamSupplier);
-            }
-        });
     }
 
     private boolean shouldProvideResource(String resourcePath) {
@@ -93,27 +157,9 @@ public class DynamicResourcePack implements PackResources{
             }
         }
 
-//        // Now, check against your categorized lists and the config.
-//        if (PackManager.BLOCK_TEXTURE_PATHS!=null&&PackManager.BLOCK_TEXTURE_PATHS.contains(resourcePath)) {
-////            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
-//             if(!ResourceManagerConfigK.ENABLE_BLOCK_TEXTURE_OVERRIDE.get()) return false;
-//        }
-//        if (PackManager.ITEM_TEXTURE_PATHS!=null&&PackManager.ITEM_TEXTURE_PATHS.contains(resourcePath)) {
-////            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
-//            if(!ResourceManagerConfigK.ENABLE_ITEM_TEXTURE_OVERRIDE.get())return false;
-//        }
-//        if (PackManager.PARTICLE_TEXTURE_PATHS!=null&&PackManager.PARTICLE_TEXTURE_PATHS.contains(resourcePath)) {
-////            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
-//            if(!ResourceManagerConfigK.ENABLE_PARTICLE_TEXTURE_OVERRIDE.get())return false;
-//        }
-//        if (PackManager.PAINTING_TEXTURE_PATHS!=null&&PackManager.PAINTING_TEXTURE_PATHS.contains(resourcePath)) {
-////            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
-//            if(!ResourceManagerConfigK.ENABLE_PAINTING_TEXTURE_OVERRIDE.get())return false;
-//        }
-
         if (resourcePath.contains("/textures/block/")) {
 //            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
-             if(!ResourceManagerConfigK.ENABLE_BLOCK_TEXTURE_OVERRIDE.get()) return false;
+            if(!ResourceManagerConfigK.ENABLE_BLOCK_TEXTURE_OVERRIDE.get()) return false;
         }
         if (resourcePath.contains("/textures/item/")) {
 //            PackManager.LOGGER.info("Resource Overridden: Type:-"+ resourcePath);
@@ -131,15 +177,10 @@ public class DynamicResourcePack implements PackResources{
         return ModOverrideConfigManager.shouldProvideModResource(resourcePath);
     }
 
-    @Override
-    public @NotNull Set<String> getNamespaces(@NotNull PackType type) {
-        return this.underlyingPack.getNamespaces(type);
-    }
-
     @Nullable
     @Override
-    public <T> T getMetadataSection(@NotNull MetadataSectionSerializer<T> deserializer) throws IOException {
-        return this.underlyingPack.getMetadataSection(deserializer);
+    public IoSupplier<InputStream> getRootResource(String @NotNull ... p_252049_) {
+        return null;
     }
 
     @Override
@@ -150,11 +191,6 @@ public class DynamicResourcePack implements PackResources{
     @Override
     public boolean isBuiltin() {
         return PackResources.super.isBuiltin();
-    }
-
-    @Override
-    public void close() {
-        this.underlyingPack.close();
     }
 
     @Override

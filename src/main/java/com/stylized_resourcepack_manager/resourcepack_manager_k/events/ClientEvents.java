@@ -14,8 +14,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackCompatibility;
 import net.minecraft.server.packs.repository.PackRepository;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.world.entity.Entity;
@@ -34,6 +36,7 @@ import net.minecraftforge.event.AddPackFindersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -313,22 +316,49 @@ public class ClientEvents {
                 return; // Do nothing if the virtual pack is null.
             }
 
+//            final Pack virtualPackContainer = Pack.create(
+//                    PackManager.VIRTUAL_PACK.packId(), // 1. ID
+//                    Component.literal(PackManager.VIRTUAL_PACK.packId()), // 2. Display Name
+//                    !ResourceManagerConfigK.ENABLE_REORDERABLE_PACK.get(), // 3. isAlwaysEnabled
+//                    (packId) -> PackManager.VIRTUAL_PACK, // 4. ResourcesSupplier
+//                    // 5. Pack.Info (using the correct constructor you provided)
+//                    new Pack.Info(
+//                            Component.literal("Dynamically manages resources via the Resource Pack Manager mod."),
+//                            15, // dataFormat
+//                            15, // resourceFormat
+//                            FeatureFlagSet.of(), // requestedFeatures
+//                            false // hidden
+//                    ),
+//
+//                    PackType.CLIENT_RESOURCES, // 6. The type of pack
+//                    ResourceManagerConfigK.ENABLE_TOP_OR_BOTTOM.get()?Pack.Position.TOP:Pack.Position.BOTTOM,// 7. The position in the list (TOP or BOTTOM)
+//                    true,
+//                    PackSource.BUILT_IN // 8. The source of the pack
+//            );
+
             final Pack virtualPackContainer = Pack.create(
                     PackManager.VIRTUAL_PACK.packId(), // 1. ID
                     Component.literal(PackManager.VIRTUAL_PACK.packId()), // 2. Display Name
                     !ResourceManagerConfigK.ENABLE_REORDERABLE_PACK.get(), // 3. isAlwaysEnabled
-                    (packId) -> PackManager.VIRTUAL_PACK, // 4. ResourcesSupplier
+                    new Pack.ResourcesSupplier() {
+                        @Override
+                        public @NotNull PackResources openPrimary(@NotNull String p_298664_) {
+                            return PackManager.VIRTUAL_PACK;
+                        }
+
+                        @Override
+                        public @NotNull PackResources openFull(@NotNull String p_251717_, Pack.@NotNull Info p_298253_) {
+                            return PackManager.VIRTUAL_PACK;
+                        }
+                    }, // 4. ResourcesSupplier
                     // 5. Pack.Info (using the correct constructor you provided)
                     new Pack.Info(
                             Component.literal("Dynamically manages resources via the Resource Pack Manager mod."),
-                            15, // dataFormat
-                            15, // resourceFormat
+                            PackCompatibility.COMPATIBLE, // dataFormat
                             FeatureFlagSet.of(), // requestedFeatures
-                            false // hidden
+                            List.of("") // hidden
                     ),
-
-                    PackType.CLIENT_RESOURCES, // 6. The type of pack
-                    ResourceManagerConfigK.ENABLE_TOP_OR_BOTTOM.get()?Pack.Position.TOP:Pack.Position.BOTTOM,// 7. The position in the list (TOP or BOTTOM)
+                    ResourceManagerConfigK.ENABLE_TOP_OR_BOTTOM.get() ? Pack.Position.TOP : Pack.Position.BOTTOM,// 7. The position in the list (TOP or BOTTOM)
                     true,
                     PackSource.BUILT_IN // 8. The source of the pack
             );

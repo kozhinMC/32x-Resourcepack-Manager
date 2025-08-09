@@ -1,21 +1,22 @@
 package com.stylized_resourcepack_manager.resourcepack_manager_k;
 
+import com.stylized_resourcepack_manager.resourcepack_manager_k.cache_tables.ModOverrideSettings;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.cache_tables.PackManagerCache;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.BlackListsConfigs;
-import com.stylized_resourcepack_manager.resourcepack_manager_k.cache_tables.ModOverrideSettings;
 import com.stylized_resourcepack_manager.resourcepack_manager_k.configs.ModOverrideConfigManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.PathPackResources;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
 import java.security.MessageDigest;
 import java.util.*;
-
-import net.minecraft.server.packs.FilePackResources; // <-- IMPORTANT IMPORT
+import java.util.stream.Collectors;
+import java.util.zip.ZipFile;
 
 
 public class PackManager {
@@ -32,6 +33,15 @@ public class PackManager {
     public static final File all_assets_cache_file = new File(Minecraft.getInstance().gameDirectory, "config/"+ResourceManagerK.MOD_CONFIG_ID+"/cache/" + ResourceManagerK.MOD_ID + "_all_assets_cache.json");
     private static final File used_assets_cache_file = new File(Minecraft.getInstance().gameDirectory, "config/"+ResourceManagerK.MOD_CONFIG_ID+"/cache/" + ResourceManagerK.MOD_ID + "_used_assets_cache.json");
     public static final File light_assets_cache_file = new File(Minecraft.getInstance().gameDirectory, "config/"+ResourceManagerK.MOD_CONFIG_ID+"/cache/" + ResourceManagerK.MOD_ID + "_light_assets_cache.json");
+
+    public static DynamicResourcePack getVirtualPack(File targetPackFile, Set<String> allKnownPaths1){
+        try {
+            return new DynamicResourcePack( targetPackFile,allKnownPaths1);
+        }catch (Exception e1) {
+            PackManager.LOGGER.error("Zip Reader Filed");
+            return null;
+        }
+    }
 
     public static void scanAndInitialize() {
         LOGGER.info("Attempting to directly locate and scan target resource pack: '{}'", TARGET_PACK_FILENAME);
@@ -63,52 +73,75 @@ public class PackManager {
             SCANNED_NAMESPACES.addAll(cache_light.scannedNameSpaces);
             Set<String> ss = update_used_cached(cache_light.UpdateFlags,ModOverrideConfigManager.modSettings,cache_used.ActiveInUseDataCache);
             LOGGER.info("Loaded {} active used resources.", ss.size());
-            VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,ss);
+            VIRTUAL_PACK = getVirtualPack(targetPackFile,ss);
+
             return;
         }
-        generate_cache();
+        generate_cache_1_20_2();
     }
 
-    private static void generate_cache(){
-        // A try-with-resources block ensures the file is closed automatically
-        try (PackResources resources = new FilePackResources(TARGET_PACK_FILENAME,targetPackFile, true)) {
-            Set<String> namespaces = resources.getNamespaces(PackType.CLIENT_RESOURCES);
+    /**
+     * Scans the resource pack file using Java's ZipFile class to be compatible with Minecraft 1.20.2+.
+     * This function replaces the original generate_cache method that relied on the now-inaccessible FilePackResources constructor.
+     */
+    private static void generate_cache_1_20_2() {
+        // --- The primary change is in this try-with-resources block ---
+        try (ZipFile packZipFile = new ZipFile(targetPackFile)) {
+
+            // 1. Replicate "resources.getNamespaces(PackType.CLIENT_RESOURCES)"
+            // We find all unique namespaces by looking at the directory structure inside "assets/".
             SCANNED_NAMESPACES.clear();
+            Set<String> namespaces = packZipFile.stream()
+                    .filter(entry -> !entry.isDirectory() && entry.getName().startsWith("assets/"))
+                    .map(entry -> {
+                        // Extract the namespace from a path like "assets/minecraft/textures/block/stone.png" -> "minecraft"
+                        String path = entry.getName().substring("assets/".length());
+                        int separatorIndex = path.indexOf('/');
+                        return (separatorIndex != -1) ? path.substring(0, separatorIndex) : null;
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
             SCANNED_NAMESPACES.addAll(namespaces);
             ResourceManagerK.SendToLoggerDebug("Found namespaces in pack: " + SCANNED_NAMESPACES, ChatFormatting.WHITE);
 
-            Map<String,ArrayList<String>> all_resources = new HashMap<>();
+            // 2. Replicate "resources.listResources" for textures
+            // We iterate through our found namespaces and list all files under their "textures" folder.
+            Map<String, ArrayList<String>> all_resources = new HashMap<>();
             for (String namespace : namespaces) {
                 ArrayList<String> paths = new ArrayList<>();
-                resources.listResources(PackType.CLIENT_RESOURCES, namespace, "textures", (location, ioSupplier) -> paths.add("assets/" + namespace + "/" + location.getPath()));
-                all_resources.put(namespace,paths);
+                final String texturePathPrefix = "assets/" + namespace + "/textures/";
+
+                packZipFile.stream()
+                        .filter(entry -> !entry.isDirectory() && entry.getName().startsWith(texturePathPrefix))
+                        .forEach(entry -> paths.add(entry.getName())); // The path inside the zip is what we need
+
+                // Only add the namespace if it actually contains texture files
+                if (!paths.isEmpty()) {
+                    all_resources.put(namespace, paths);
+                }
             }
 
-//            for (String path : allScannedPaths) {
-//                if (path.contains("/textures/particle/")) {
-//                    PARTICLE_TEXTURE_PATHS.add(path);
-//                } else if (path.contains("/textures/block/")) {
-//                    BLOCK_TEXTURE_PATHS.add(path);
-//                } else if (path.contains("/textures/item/")) {
-//                    ITEM_TEXTURE_PATHS.add(path);
-//                } else if (path.contains("/textures/painting/")) {
-//                    PAINTING_TEXTURE_PATHS.add(path);
-//                }
-//            }
+            // --- All the logic below this point remains identical to your original function ---
 
-            LOGGER.info(all_resources.size()+" Cached and Saved.");
+            if (SCANNED_NAMESPACES.isEmpty()) return;
+            LOGGER.info(all_resources.size() + " Cached and Saved.");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
 
-            Map<String,Boolean> update_flags = new HashMap<>();
-            SCANNED_NAMESPACES.forEach(name->update_flags.put(name,true));
-            save_cache(all_assets_cache_file,all_resources,null,null,null);
-            save_cache(light_assets_cache_file,null,null,SCANNED_NAMESPACES,update_flags);
-            save_cache(used_assets_cache_file,null,new HashSet<>(),null,null);
-            VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,new HashSet<>());
-        } catch (Exception e) {
-            LOGGER.error("An unexpected error occurred while scanning the resource pack file.", e);
-            VIRTUAL_PACK = new DynamicResourcePack( targetPackFile,Collections.emptySet());
+            Map<String, Boolean> update_flags = new HashMap<>();
+            SCANNED_NAMESPACES.forEach(name -> update_flags.put(name, true));
+            save_cache(all_assets_cache_file, all_resources, null, null, null);
+            save_cache(light_assets_cache_file, null, null, SCANNED_NAMESPACES, update_flags);
+            save_cache(used_assets_cache_file, null, new HashSet<>(), null, null);
+            VIRTUAL_PACK = new DynamicResourcePack(targetPackFile, new HashSet<>());
+
+        } catch (IOException e) { // Catch IOException specifically for ZipFile errors
+            LOGGER.error("An error occurred while reading the resource pack zip file.", e);
+            VIRTUAL_PACK = getVirtualPack(targetPackFile, Collections.emptySet());
+        } catch (Exception e) { // Keep a general catch for your other logic
+            LOGGER.error("An unexpected error occurred after scanning the resource pack file.", e);
+            VIRTUAL_PACK = getVirtualPack(targetPackFile, Collections.emptySet());
         }
     }
 

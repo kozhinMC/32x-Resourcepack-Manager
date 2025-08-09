@@ -16,9 +16,9 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.jetbrains.annotations.NotNull;
 
 @Mod(ResourceManagerK.MOD_ID)
@@ -28,19 +28,14 @@ public class ResourceManagerK {
     public static final String MOD_CONFIG_ID = "32x_mods_resources-manager";
     public static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    public ResourceManagerK(FMLJavaModLoadingContext context) {
+    public ResourceManagerK() {
         // Register the config file
-        context.registerConfig(ModConfig.Type.CLIENT, ResourceManagerConfigK.SPEC, ResourceManagerK.MOD_CONFIG_ID+"/resource-manager-client.toml");
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, ResourceManagerConfigK.SPEC, ResourceManagerK.MOD_CONFIG_ID+"/resource-manager-client.toml");
 
         //Register the config screen factory
-        context.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
+        ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory((minecraft, screen) -> ConfigScreenProvider.createConfigScreen(screen))
         );
-
-//        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, ResourceManagerConfigK.SPEC, "32x_resource-manager/resource-manager-client.toml");
-//        ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
-//                () -> new ConfigScreenHandler.ConfigScreenFactory((minecraft, screen) -> ConfigScreenProvider.createConfigScreen(screen))
-//        );
 
         ModOverrideConfigManager.initialize();
         BlackListsConfigs.initialize();
@@ -104,32 +99,14 @@ public class ResourceManagerK {
     @Mod.EventBusSubscriber(modid =  ResourceManagerK.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
     public static class ClientEvents {
 
-        private static final ResourceLocation CONFIG_BUTTON_TEXTURE =
-                ResourceLocation.fromNamespaceAndPath(ResourceManagerK.MOD_ID, "textures/gui/2_logo.png");
+        //private static final ResourceLocation CONFIG_BUTTON_TEXTURE = ResourceLocation.fromNamespaceAndPath(ResourceManagerK.MOD_ID, "textures/gui/2_logo.png"); // Main 1.20.1
+        private static final ResourceLocation CONFIG_BUTTON_TEXTURE = ResourceLocation.tryBuild(ResourceManagerK.MOD_ID, "textures/gui/2_logo.png");
 
         @SubscribeEvent
         public static void onScreenInit(ScreenEvent.Init.Post event) {
             if (!ResourceManagerConfigK.ENABLE_TITLE_SCREEN_BUTTON.get() || !ResourceManagerConfigK.ENABLE_RESOURCEPACK.get())return;
             // We only want to add the button to the TitleScreen
             if (event.getScreen() instanceof TitleScreen screen) {
-//
-//                int buttonWidth = 15;
-//                int buttonHeight = 15;
-//
-//                int x = 4;
-//                int y = screen.height / 4 + 48;
-//
-//                ImageButton configButton = new ImageButton(
-//                        x, y,
-//                        buttonWidth, buttonHeight,
-//                        0, 0,
-//                        0,
-//                        CONFIG_BUTTON_TEXTURE,
-//                        15,15,
-//                        (button) -> Minecraft.getInstance().setScreen(ConfigScreenProvider.createConfigScreen(Minecraft.getInstance().screen)),
-//                        Component.literal("Open Config").withStyle(ChatFormatting.GOLD)
-//                );
-
                 int buttonWidth = 15;
                 int buttonHeight = 15;
                 int x = 4;

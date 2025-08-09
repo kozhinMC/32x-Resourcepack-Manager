@@ -133,7 +133,9 @@ public class TextureFinder {
 
         // 2. Construct the path to the main painting texture.
         // The convention is that a painting with ID "mod:name" has its texture at "assets/mod/textures/painting/name.png"
-        ResourceLocation frontTextureLocation = ResourceLocation.fromNamespaceAndPath(paintingId.getNamespace(), "textures/painting/" + paintingId.getPath() + ".png");
+//        ResourceLocation frontTextureLocation = ResourceLocation.fromNamespaceAndPath(paintingId.getNamespace(), "textures/painting/" + paintingId.getPath() + ".png"); // Main 1.20.1
+        ResourceLocation frontTextureLocation = ResourceLocation.tryBuild(paintingId.getNamespace(), "textures/painting/" + paintingId.getPath() + ".png");
+        if (frontTextureLocation!=null)
         texturePaths.add("assets/" + frontTextureLocation.getNamespace() + "/" + frontTextureLocation.getPath());
 
 
@@ -151,9 +153,11 @@ public class TextureFinder {
      */
     public static List<String> getForcedTexturePathForBlock(ResourceLocation blockId) {
         // Convention: A block with ID "mod:name" likely has a texture at "assets/mod/textures/block/name.png"
-        ResourceLocation textureLocation = ResourceLocation.fromNamespaceAndPath(blockId.getNamespace(), "textures/block/" + blockId.getPath() + ".png");
-        String fullPath = "assets/" + textureLocation.getNamespace() + "/" + textureLocation.getPath();
-        return Collections.singletonList(fullPath);
+        ResourceLocation textureLocation = ResourceLocation.tryBuild(blockId.getNamespace(), "textures/block/" + blockId.getPath() + ".png");
+        if (textureLocation!=null) {
+            String fullPath = "assets/" + textureLocation.getNamespace() + "/" + textureLocation.getPath();
+            return Collections.singletonList(fullPath);
+        }else return new ArrayList<>();
     }
 
     /**
@@ -164,9 +168,11 @@ public class TextureFinder {
      */
     public static List<String> getForcedTexturePathForItem(ResourceLocation itemId) {
         // Convention: An item with ID "mod:name" likely has a texture at "assets/mod/textures/item/name.png"
-        ResourceLocation textureLocation = ResourceLocation.fromNamespaceAndPath(itemId.getNamespace(), "textures/item/" + itemId.getPath() + ".png");
-        String fullPath = "assets/" + textureLocation.getNamespace() + "/" + textureLocation.getPath();
-        return Collections.singletonList(fullPath);
+        ResourceLocation textureLocation = ResourceLocation.tryBuild(itemId.getNamespace(), "textures/item/" + itemId.getPath() + ".png");
+        if (textureLocation!=null) {
+            String fullPath = "assets/" + textureLocation.getNamespace() + "/" + textureLocation.getPath();
+            return Collections.singletonList(fullPath);
+        }else return new ArrayList<>();
     }
 
     // PARSERS
@@ -176,8 +182,9 @@ public class TextureFinder {
     private static Set<String> getBlockTextures(ResourceLocation blockId, net.minecraft.server.packs.resources.ResourceManager resourceManager) {
         Set<String> texturePaths = new HashSet<>();
         // 1. Find the blockstate file
-        ResourceLocation blockstateLocation = ResourceLocation.fromNamespaceAndPath(blockId.getNamespace(), "blockstates/" + blockId.getPath() + ".json");
+        ResourceLocation blockstateLocation = ResourceLocation.tryBuild(blockId.getNamespace(), "blockstates/" + blockId.getPath() + ".json");
 
+        if (blockstateLocation==null)return texturePaths;
         Optional<Resource> resourceProvider = resourceManager.getResource(blockstateLocation);
         if (resourceProvider.isPresent())
         try (InputStreamReader reader = new InputStreamReader(resourceProvider.get().open())) {
@@ -190,9 +197,9 @@ public class TextureFinder {
                 for (JsonElement variantElement : variants.asMap().values()) {
                     // Models can be in an array or a single object
                     if (variantElement.isJsonArray()) {
-                        variantElement.getAsJsonArray().forEach(elem -> modelLocations.add(ResourceLocation.parse(elem.getAsJsonObject().get("model").getAsString())));
+                        variantElement.getAsJsonArray().forEach(elem -> modelLocations.add(ResourceLocation.tryParse(elem.getAsJsonObject().get("model").getAsString())));
                     } else {
-                        modelLocations.add(ResourceLocation.parse(variantElement.getAsJsonObject().get("model").getAsString()));
+                        modelLocations.add(ResourceLocation.tryParse(variantElement.getAsJsonObject().get("model").getAsString()));
                     }
                 }
             }
@@ -200,9 +207,9 @@ public class TextureFinder {
                 blockstateJson.getAsJsonArray("multipart").forEach(part -> {
                     JsonObject apply = part.getAsJsonObject().getAsJsonObject("apply");
                     if (apply.isJsonArray()) {
-                        apply.getAsJsonArray().forEach(elem -> modelLocations.add(ResourceLocation.parse(elem.getAsJsonObject().get("model").getAsString())));
+                        apply.getAsJsonArray().forEach(elem -> modelLocations.add(ResourceLocation.tryParse(elem.getAsJsonObject().get("model").getAsString())));
                     } else {
-                        modelLocations.add(ResourceLocation.parse(apply.get("model").getAsString()));
+                        modelLocations.add(ResourceLocation.tryParse(apply.get("model").getAsString()));
                     }
                 });
             }
@@ -226,8 +233,8 @@ public class TextureFinder {
      */
     private static Set<String> getItemTextures(ResourceLocation itemId, net.minecraft.server.packs.resources.ResourceManager resourceManager, Set<ResourceLocation> visitedModels) {
         // First, check the item's own model file to see if it's just a block redirect.
-        ResourceLocation itemModelFile = ResourceLocation.fromNamespaceAndPath(itemId.getNamespace(), "models/item/" + itemId.getPath() + ".json");
-
+        ResourceLocation itemModelFile = ResourceLocation.tryBuild(itemId.getNamespace(), "models/item/" + itemId.getPath() + ".json");
+        if (itemModelFile==null)return new HashSet<>();
         try {
             Optional<Resource> resourceOptional = resourceManager.getResource(itemModelFile);
             if (resourceOptional.isPresent()) {
@@ -235,10 +242,10 @@ public class TextureFinder {
                     JsonObject modelJson = JsonParser.parseReader(reader).getAsJsonObject();
                     if (modelJson.has("parent")) {
                         // Use ResourceLocation.parse to correctly handle namespaces
-                        ResourceLocation parentLocation = ResourceLocation.parse(modelJson.get("parent").getAsString());
+                        ResourceLocation parentLocation = ResourceLocation.tryParse(modelJson.get("parent").getAsString());
 
                         // THE CORE LOGIC: Check if the parent model is in the 'block/' directory.
-                        if (parentLocation.getPath().startsWith("block/")) {
+                        if (parentLocation!=null&&parentLocation.getPath().startsWith("block/")) {
                             ResourceManagerK.SendToChatInfo(Minecraft.getInstance(),"Item '" + itemId + "' uses a block model directly. No unique item assets found.",ChatFormatting.YELLOW);
                             return Collections.emptySet(); // Return empty set as requested.
                         }
@@ -251,7 +258,7 @@ public class TextureFinder {
         }
 
         // If the check above didn't stop us, proceed with the original recursive search.
-        ResourceLocation modelIdForRecursion = ResourceLocation.fromNamespaceAndPath(itemId.getNamespace(), "item/" + itemId.getPath());
+        ResourceLocation modelIdForRecursion = ResourceLocation.tryBuild(itemId.getNamespace(), "item/" + itemId.getPath());
         Set<String> paths = getTexturesFromModel(modelIdForRecursion, resourceManager, visitedModels);
         if (paths.isEmpty()){
             PackManagerCache all_assets = PackManager.load_cache(PackManager.all_assets_cache_file);
@@ -273,7 +280,8 @@ public class TextureFinder {
         Set<String> texturePaths = new HashSet<>();
 
         try {
-            ResourceLocation properModelLocation = ResourceLocation.fromNamespaceAndPath(modelId.getNamespace(), "models/" + modelId.getPath() + ".json");
+            ResourceLocation properModelLocation = ResourceLocation.tryBuild(modelId.getNamespace(), "models/" + modelId.getPath() + ".json");
+            if (properModelLocation==null)return texturePaths;
             Optional<Resource> modelResourceOptional = resourceManager.getResource(properModelLocation);
 
             if (modelResourceOptional.isEmpty()) {
@@ -289,7 +297,7 @@ public class TextureFinder {
 
                 // 1. Recursively get textures from the parent model, if it exists
                 if (modelJson.has("parent")) {
-                    ResourceLocation parentModelId = ResourceLocation.parse(modelJson.get("parent").getAsString());
+                    ResourceLocation parentModelId = ResourceLocation.tryParse(modelJson.get("parent").getAsString());
                     texturePaths.addAll(getTexturesFromModel(parentModelId, resourceManager, visitedModels));
                 }
 
@@ -300,7 +308,8 @@ public class TextureFinder {
                         String path = textureValue.getAsString();
                         // Sometimes the value is a reference to another key in the same file (e.g., "particle": "#side"). We ignore these.
                         if (!path.startsWith("#")) {
-                            ResourceLocation textureLocation = ResourceLocation.parse(path);
+                            ResourceLocation textureLocation = ResourceLocation.tryParse(path);
+                            if (textureLocation!=null)
                             texturePaths.add("assets/" + textureLocation.getNamespace() + "/textures/" + textureLocation.getPath() + ".png");
                         }
                     }
