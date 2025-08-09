@@ -44,7 +44,7 @@ public class PackManager {
     }
 
     public static void scanAndInitialize() {
-        LOGGER.info("Attempting to directly locate and scan target resource pack: '{}'", TARGET_PACK_FILENAME);
+        LOGGER.info("trying to load main resource pack manually: '{}'", TARGET_PACK_FILENAME);
 
         // 2. Check if the target zip file actually exists
         if (!targetPackFile.exists() || !targetPackFile.isFile()) {
@@ -63,10 +63,10 @@ public class PackManager {
             return;
         }
 
-        LOGGER.info("Found target pack file '{}'. Opening and scanning contents or loading cache...", targetPackFile.getAbsolutePath());
         PackManagerCache cache_used = load_cache(used_assets_cache_file);
         PackManagerCache cache_light = load_cache(light_assets_cache_file);
-        if(cache_used != null&&cache_light!=null){
+        if(cache_used != null&&cache_light!=null&&!cache_light.scannedNameSpaces.isEmpty()&&!cache_used.ActiveInUseDataCache.isEmpty()){
+            LOGGER.info("Found resource pack file: loading cached assets...");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
             SCANNED_NAMESPACES = new HashSet<>();
@@ -74,7 +74,6 @@ public class PackManager {
             Set<String> ss = update_used_cached(cache_light.UpdateFlags,ModOverrideConfigManager.modSettings,cache_used.ActiveInUseDataCache);
             LOGGER.info("Loaded {} active used resources.", ss.size());
             VIRTUAL_PACK = getVirtualPack(targetPackFile,ss);
-
             return;
         }
         generate_cache_1_20_2();
@@ -124,7 +123,11 @@ public class PackManager {
 
             // --- All the logic below this point remains identical to your original function ---
 
-            if (SCANNED_NAMESPACES.isEmpty()) return;
+            if (SCANNED_NAMESPACES.isEmpty()||all_resources.isEmpty()){
+                LOGGER.error("An unexpected error occurred while scanning the resource pack file: Couldn't Find Any Assets.");
+                VIRTUAL_PACK = new DynamicResourcePack(targetPackFile,Collections.emptySet());
+                return;
+            }
             LOGGER.info(all_resources.size() + " Cached and Saved.");
             ModOverrideConfigManager.loadConfig();
             BlackListsConfigs.loadConfig();
@@ -135,7 +138,7 @@ public class PackManager {
             save_cache(light_assets_cache_file, null, null, SCANNED_NAMESPACES, update_flags);
             save_cache(used_assets_cache_file, null, new HashSet<>(), null, null);
             VIRTUAL_PACK = new DynamicResourcePack(targetPackFile, new HashSet<>());
-
+            LOGGER.info("Found resource pack file': resource pack is active now and up to date. caching assets...");
         } catch (IOException e) { // Catch IOException specifically for ZipFile errors
             LOGGER.error("An error occurred while reading the resource pack zip file.", e);
             VIRTUAL_PACK = getVirtualPack(targetPackFile, Collections.emptySet());

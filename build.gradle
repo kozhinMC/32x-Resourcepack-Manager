@@ -7,7 +7,18 @@ plugins {
 
 version = mod_version
 group = mod_group_id
-def targetModsFolder = 'C:/Users/Hiwa Gaming/AppData/Roaming/PrismLauncher/instances/1.20.1/.minecraft/mods'
+def targetModsFolder = ''
+
+// Find the local.properties file in the root of the project
+def localPropertiesFile = rootProject.file('local.properties')
+
+// If the file exists, load the properties from it
+if (localPropertiesFile.exists()) {
+    def properties = new Properties()
+    properties.load(new FileReader(localPropertiesFile))
+    // Read the value and assign it to our variable
+    targetModsFolder = properties.getProperty('mods_folder_1.20.2', '') // The second parameter is a default if not found
+}
 base {
     archivesName = mod_id
 }
